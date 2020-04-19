@@ -20,7 +20,7 @@ template<typename Mutex>
 class trace_sink : public base_sink<Mutex>
 {
 public:
-    explicit trace_sink(bool use_raw_msg = false)
+    explicit trace_sink(bool use_raw_msg = true)
 		: trace_lvls_{{/* spdlog::level::trace      */ TLVL_TRACE,
               /* spdlog::level::debug      */ TLVL_DEBUG,
               /* spdlog::level::info       */ TLVL_INFO,
@@ -34,19 +34,25 @@ public:
 protected:
     void sink_it_(const details::log_msg &msg) override
     {
-
-        memory_buf_t formatted;
-        //base_sink<Mutex>::formatter_->format(msg, formatted);
-		details::fmt_helper::append_string_view(msg.payload, formatted);
 		if TRACE_INIT_CHECK(TRACE_NAME)
 		{
 			auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(msg.time.time_since_epoch());
 			struct timeval lclTime={microseconds.count()/1000000, microseconds.count()%1000000};
 			uint8_t      lvl_ = trace_lvl_from_level(msg);
+			char         _ins[32];
 			const char * filename = msg.source.filename;
 			int          line = msg.source.line;
-			//const char * funcname = msg.source.funcname;
-			const char * message  = formatted.data();
+			const char * funcname = msg.source.funcname;
+			string_view_t payload;
+			memory_buf_t formatted;
+			if (use_raw_msg_)
+				payload = msg.payload;
+			else
+			{
+				base_sink<Mutex>::formatter_->format(msg, formatted);
+				payload = string_view_t(formatted.data(), formatted.size());
+			}
+			const char * message  = payload.data();
 			uint16_t     nargs    = 0;
 			if (traceControl_rwp->mode.bits.M && (traceNamLvls_p[traceTID].M & TLVLMSK(lvl_)))
 			{
@@ -54,10 +60,54 @@ protected:
 			}
 			if (traceControl_rwp->mode.bits.S && (traceNamLvls_p[traceTID].S & TLVLMSK(lvl_)))
 			{
-				TRACE_LIMIT_SLOW(lvl_, _insert, &lclTime)
+				bool do_s = false;
+				switch (msg.level)      // A static limit_info_t PER spdlog::level PER thread PER compilation unit
 				{
-					TRACE_LOG_FUNCTION(&lclTime, traceTID, lvl_, _insert, filename, line, /*funcname,*/ nargs, message);
+				case spdlog::level::critical:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::err:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::warn:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::info:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::debug:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::trace:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
+				case spdlog::level::off:
+				case spdlog::level::n_levels:
+					{
+						static TRACE_THREAD_LOCAL limit_info_t _info = {/*TRACE_ATOMIC_INIT,*/ 0, lsFREE, 0};
+						if (limit_do_print(&lclTime, &_info, _ins, sizeof(_ins))) do_s = true;
+					}
+					break;
 				}
+				if (do_s) TRACE_LOG_FUNCTION(&lclTime, traceTID, lvl_, _ins, filename, line, funcname, nargs, message);
 			}
 		}
     }
