@@ -43,6 +43,10 @@ if(systemd_FOUND)
 	list(APPEND SPDLOG_UTESTS_SOURCES test_systemd.cpp)
 endif()
 
+CHECK_INCLUDE_FILE("/usr/include/TRACE/trace.h" trace_FOUND)
+if(trace_FOUND)
+	list(APPEND SPDLOG_UTESTS_SOURCES test_trace.cpp)
+endif()  
 
 enable_testing()
 
